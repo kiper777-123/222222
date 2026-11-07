@@ -111,17 +111,14 @@
     <!-- Pływający Toolbar -->
     <div id="boardToolbar" class="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[95vw] overflow-x-auto no-scrollbar z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-2xl p-1.5 shadow-2xl flex items-center space-x-1 whitespace-nowrap">
       
-      <!-- Tryb Wyboru / Przesuwania Obiektów -->
-      <button id="toolSelect" title="Zaznacz / Przesuń obiekt" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
+      <button id="toolSelect" title="Zaznacz / Przesuń jeden obiekt" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
         <i data-lucide="mouse-pointer" class="w-5 h-5"></i>
       </button>
       
-      <!-- Tryb Wolnego Przesuwania Tablicy (Rączka) -->
-      <button id="toolPan" title="Wolny tryb przesuwania tablicy (Rączka)" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
+      <button id="toolPan" title="Przesuwanie całej tablicy (Rączka)" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
         <i data-lucide="hand" class="w-5 h-5"></i>
       </button>
 
-      <!-- Tryb Rysowania -->
       <button id="toolDraw" title="Pędzel / Rysowanie" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
         <i data-lucide="pencil" class="w-5 h-5"></i>
       </button>
@@ -155,7 +152,7 @@
     </div>
 
     <!-- WIDOK 1: Nieskończona Tablica (Canvas Board) -->
-    <div id="boardContainer" class="w-full h-full relative overflow-hidden grid-bg cursor-grab active:cursor-grabbing">
+    <div id="boardContainer" class="w-full h-full relative overflow-hidden grid-bg cursor-default">
       <canvas id="paintCanvas" class="absolute top-0 left-0 pointer-events-none z-0"></canvas>
       <div id="elementsLayer" class="absolute top-0 left-0 w-full h-full z-1"></div>
     </div>
@@ -177,6 +174,8 @@
       startPan: { x: 0, y: 0 },
       items: [],
       selectedItemId: null,
+      draggingItemId: null,
+      dragOffset: { x: 0, y: 0 },
       isDrawing: false,
       drawPaths: [],
       currentPath: null
@@ -211,7 +210,6 @@
       const drawBtn = document.getElementById('toolDraw');
       const brushOpts = document.getElementById('brushOptions');
 
-      // Reset klas przycisków
       [selectBtn, panBtn, drawBtn].forEach(b => {
         b.className = "p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300";
       });
@@ -266,7 +264,7 @@
         const el = document.createElement('div');
         
         if (item.type === 'image') {
-          el.className = `absolute note-card rounded-xl shadow-lg border-2 transition-all ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-2xl z-10' : 'border-transparent shadow-md z-1'}`;
+          el.className = `absolute note-card rounded-xl shadow-lg border-2 transition-all ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-2xl z-20' : 'border-transparent shadow-md z-1'}`;
           el.style.left = `${item.x}px`;
           el.style.top = `${item.y}px`;
           el.style.width = `${item.width}px`;
@@ -280,7 +278,7 @@
             </div>
           `;
         } else if (item.type === 'note') {
-          el.className = `absolute note-card rounded-xl shadow-md border-2 ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-xl z-10' : 'border-transparent z-1'} overflow-hidden`;
+          el.className = `absolute note-card rounded-xl shadow-md border-2 ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-xl z-20' : 'border-transparent z-1'} overflow-hidden`;
           el.style.left = `${item.x}px`;
           el.style.top = `${item.y}px`;
           el.style.width = `${item.width}px`;
@@ -305,7 +303,7 @@
           `;
         }
 
-        makeDraggable(el, item);
+        bindItemEvents(el, item);
         elementsLayer.appendChild(el);
       });
       lucide.createIcons();
@@ -326,9 +324,7 @@
         card.className = "bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col";
         
         if (item.type === 'image') {
-          card.innerHTML = `
-            <img src="${item.content}" class="w-full h-48 object-cover" />
-          `;
+          card.innerHTML = `<img src="${item.content}" class="w-full h-48 object-cover" />`;
         } else {
           card.style.backgroundColor = item.color || '#fef08a';
           card.innerHTML = `
@@ -343,55 +339,34 @@
       });
     }
 
-    function makeDraggable(el, item) {
-      let isDraggingThisItem = false;
-      let startX, startY;
+    // Podpinanie zdarzeń do pojedynczego elementu (obrazu / karteczki)
+    function bindItemEvents(el, item) {
+      const handleStart = (clientX, clientY, e) => {
+        if (state.tool === 'pan') return; // Jeśli aktywna jest RĄCZKA, pozwól zdarzeniu przejść do tła!
 
-      const startAction = (clientX, clientY, e) => {
-        // Jeśli jest aktywny tryb przesuwania tablicy (Rączka), ignoruj przesuwanie pojedynczego obiektu
-        if (state.tool === 'pan') return;
+        // W trybie ZAZNACZANIA przerywamy propagację, by nie przesuwać tła
+        e.stopPropagation();
 
-        isDraggingThisItem = true;
         state.selectedItemId = item.id;
-        startX = clientX - item.x * state.zoom;
-        startY = clientY - item.y * state.zoom;
+        state.draggingItemId = item.id;
+        state.dragOffset = {
+          x: clientX - item.x * state.zoom,
+          y: clientY - item.y * state.zoom
+        };
         renderBoardElements();
-        if (e) e.stopPropagation();
-      };
-
-      const moveAction = (clientX, clientY) => {
-        if (!isDraggingThisItem || state.tool === 'pan') return;
-        item.x = (clientX - startX) / state.zoom;
-        item.y = (clientY - startY) / state.zoom;
-        el.style.left = `${item.x}px`;
-        el.style.top = `${item.y}px`;
-      };
-
-      const endAction = () => {
-        if (isDraggingThisItem) {
-          isDraggingThisItem = false;
-          saveToLocalStorage();
-        }
       };
 
       el.addEventListener('mousedown', (e) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
-        startAction(e.clientX, e.clientY, e);
+        handleStart(e.clientX, e.clientY, e);
       });
 
       el.addEventListener('touchstart', (e) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
-        const touch = e.touches[0];
-        startAction(touch.clientX, touch.clientY, e);
-      }, { passive: true });
-
-      window.addEventListener('mousemove', (e) => moveAction(e.clientX, e.clientY));
-      window.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 0) moveAction(e.touches[0].clientX, e.touches[0].clientY);
-      }, { passive: true });
-
-      window.addEventListener('mouseup', endAction);
-      window.addEventListener('touchend', endAction);
+        if (e.touches.length > 0) {
+          handleStart(e.touches[0].clientX, e.touches[0].clientY, e);
+        }
+      }, { passive: false });
     }
 
     function redrawCanvas() {
@@ -431,7 +406,8 @@
         }
       });
 
-      const startBoardAction = (clientX, clientY) => {
+      // Zdarzenia globalne ruchu i klikania
+      const handleGlobalStart = (clientX, clientY) => {
         if (state.tool === 'draw') {
           state.isDrawing = true;
           const rect = boardContainer.getBoundingClientRect();
@@ -446,18 +422,39 @@
           return;
         }
 
-        // Przesuwanie tablicy (zarówno w trybie 'pan', jak i przy kliknięciu w tło w trybie 'select')
+        // Jeśli kliknięto w puste tło lub aktywna jest rączka -> Przesuwanie tablicy
         state.isPanning = true;
         state.startPan = { x: clientX - state.pan.x, y: clientY - state.pan.y };
       };
 
-      const moveBoardAction = (clientX, clientY) => {
+      const handleGlobalMove = (clientX, clientY) => {
+        // 1. Przesuwanie pojedynczego obiektu (w trybie Select)
+        if (state.draggingItemId && state.tool === 'select') {
+          const item = state.items.find(i => i.id === state.draggingItemId);
+          if (item) {
+            item.x = (clientX - state.dragOffset.x) / state.zoom;
+            item.y = (clientY - state.dragOffset.y) / state.zoom;
+            
+            const el = elementsLayer.querySelector(`[data-id="${item.id}"]`) || elementsLayer.children[state.items.indexOf(item)];
+            if (el) {
+              el.style.left = `${item.x}px`;
+              el.style.top = `${item.y}px`;
+            }
+          }
+          return;
+        }
+
+        // 2. Przesuwanie całej tablicy (Rączka lub tło)
         if (state.isPanning) {
           state.pan.x = clientX - state.startPan.x;
           state.pan.y = clientY - state.startPan.y;
           elementsLayer.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
           redrawCanvas();
-        } else if (state.isDrawing && state.currentPath) {
+          return;
+        }
+
+        // 3. Rysowanie
+        if (state.isDrawing && state.currentPath) {
           const rect = boardContainer.getBoundingClientRect();
           const x = (clientX - rect.left - state.pan.x) / state.zoom;
           const y = (clientY - rect.top - state.pan.y) / state.zoom;
@@ -466,8 +463,14 @@
         }
       };
 
-      const endBoardAction = () => {
-        if (state.isPanning) state.isPanning = false;
+      const handleGlobalEnd = () => {
+        if (state.draggingItemId) {
+          state.draggingItemId = null;
+          saveToLocalStorage();
+        }
+        if (state.isPanning) {
+          state.isPanning = false;
+        }
         if (state.isDrawing) {
           state.isDrawing = false;
           state.currentPath = null;
@@ -476,33 +479,30 @@
       };
 
       boardContainer.addEventListener('mousedown', (e) => {
-        // Kliknięcie w puste tło odznacza wybrane obiekty
         if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
           state.selectedItemId = null;
           renderBoardElements();
-          startBoardAction(e.clientX, e.clientY);
-        } else if (state.tool === 'pan') {
-          startBoardAction(e.clientX, e.clientY);
         }
+        handleGlobalStart(e.clientX, e.clientY);
       });
 
       boardContainer.addEventListener('touchstart', (e) => {
         if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
           state.selectedItemId = null;
           renderBoardElements();
-          if (e.touches.length > 0) startBoardAction(e.touches[0].clientX, e.touches[0].clientY);
-        } else if (state.tool === 'pan') {
-          if (e.touches.length > 0) startBoardAction(e.touches[0].clientX, e.touches[0].clientY);
+        }
+        if (e.touches.length > 0) {
+          handleGlobalStart(e.touches[0].clientX, e.touches[0].clientY);
         }
       }, { passive: true });
 
-      window.addEventListener('mousemove', (e) => moveBoardAction(e.clientX, e.clientY));
+      window.addEventListener('mousemove', (e) => handleGlobalMove(e.clientX, e.clientY));
       window.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 0) moveBoardAction(e.touches[0].clientX, e.touches[0].clientY);
+        if (e.touches.length > 0) handleGlobalMove(e.touches[0].clientX, e.touches[0].clientY);
       }, { passive: true });
 
-      window.addEventListener('mouseup', endBoardAction);
-      window.addEventListener('touchend', endBoardAction);
+      window.addEventListener('mouseup', handleGlobalEnd);
+      window.addEventListener('touchend', handleGlobalEnd);
 
       boardContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -527,7 +527,7 @@
         render();
       });
 
-      // Narzędzia w Toolbarze
+      // Narzędzia
       document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
       document.getElementById('toolPan').addEventListener('click', () => setTool('pan'));
       document.getElementById('toolDraw').addEventListener('click', () => setTool('draw'));
@@ -697,5 +697,4 @@
   </script>
 </body>
 </html>
-
 
