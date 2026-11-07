@@ -35,7 +35,7 @@
       touch-action: none;
     }
     .note-card {
-      transition: box-shadow 0.2s ease;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
     }
     .no-scrollbar::-webkit-scrollbar {
       display: none;
@@ -110,9 +110,18 @@
     
     <!-- Pływający Toolbar -->
     <div id="boardToolbar" class="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[95vw] overflow-x-auto no-scrollbar z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-2xl p-1.5 shadow-2xl flex items-center space-x-1 whitespace-nowrap">
-      <button id="toolSelect" title="Przesuwanie / Wybór" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
+      
+      <!-- Tryb Wyboru / Przesuwania Obiektów -->
+      <button id="toolSelect" title="Zaznacz / Przesuń obiekt" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
         <i data-lucide="mouse-pointer" class="w-5 h-5"></i>
       </button>
+      
+      <!-- Tryb Wolnego Przesuwania Tablicy (Rączka) -->
+      <button id="toolPan" title="Wolny tryb przesuwania tablicy (Rączka)" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
+        <i data-lucide="hand" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Tryb Rysowania -->
       <button id="toolDraw" title="Pędzel / Rysowanie" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
         <i data-lucide="pencil" class="w-5 h-5"></i>
       </button>
@@ -161,7 +170,7 @@
   <script>
     const state = {
       view: 'board',
-      tool: 'select',
+      tool: 'select', // 'select', 'pan', 'draw'
       zoom: 1,
       pan: { x: 0, y: 0 },
       isPanning: false,
@@ -194,6 +203,36 @@
       redrawCanvas();
     }
 
+    function setTool(toolName) {
+      state.tool = toolName;
+      
+      const selectBtn = document.getElementById('toolSelect');
+      const panBtn = document.getElementById('toolPan');
+      const drawBtn = document.getElementById('toolDraw');
+      const brushOpts = document.getElementById('brushOptions');
+
+      // Reset klas przycisków
+      [selectBtn, panBtn, drawBtn].forEach(b => {
+        b.className = "p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300";
+      });
+
+      brushOpts.classList.add('hidden');
+      brushOpts.classList.remove('flex');
+
+      if (toolName === 'select') {
+        selectBtn.className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
+        boardContainer.style.cursor = 'default';
+      } else if (toolName === 'pan') {
+        panBtn.className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
+        boardContainer.style.cursor = 'grab';
+      } else if (toolName === 'draw') {
+        drawBtn.className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
+        brushOpts.classList.remove('hidden');
+        brushOpts.classList.add('flex');
+        boardContainer.style.cursor = 'crosshair';
+      }
+    }
+
     function render() {
       if (state.view === 'board') {
         boardContainer.classList.remove('hidden');
@@ -223,24 +262,25 @@
 
         if (!matchesSearch || !matchesTag) return;
 
+        const isSelected = state.selectedItemId === item.id;
         const el = document.createElement('div');
         
         if (item.type === 'image') {
-          // Samo zdjęcie - bez paneli tekstowych na dole
-          el.className = `absolute note-card group rounded-xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 overflow-hidden cursor-move ${state.selectedItemId === item.id ? 'ring-2 ring-indigo-500 shadow-2xl' : ''}`;
+          el.className = `absolute note-card rounded-xl shadow-lg border-2 transition-all ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-2xl z-10' : 'border-transparent shadow-md z-1'}`;
           el.style.left = `${item.x}px`;
           el.style.top = `${item.y}px`;
           el.style.width = `${item.width}px`;
+          
           el.innerHTML = `
-            <div class="relative w-full h-full">
-              <img src="${item.content}" class="w-full h-auto object-cover rounded-xl pointer-events-none block" />
-              <button onclick="deleteItem('${item.id}')" class="absolute top-2 right-2 bg-black/60 hover:bg-red-600 text-white p-1.5 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+            <div class="relative w-full h-full group">
+              <img src="${item.content}" class="w-full h-auto object-cover rounded-lg pointer-events-none block" />
+              <button onclick="event.stopPropagation(); deleteItem('${item.id}')" class="absolute top-2 right-2 bg-black/60 hover:bg-red-600 text-white p-1.5 rounded-full backdrop-blur-md ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-opacity shadow-md">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               </button>
             </div>
           `;
         } else if (item.type === 'note') {
-          el.className = `absolute note-card group rounded-xl shadow-md border border-gray-200/80 dark:border-gray-700/80 overflow-hidden cursor-move ${state.selectedItemId === item.id ? 'ring-2 ring-indigo-500 shadow-xl' : ''}`;
+          el.className = `absolute note-card rounded-xl shadow-md border-2 ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-xl z-10' : 'border-transparent z-1'} overflow-hidden`;
           el.style.left = `${item.x}px`;
           el.style.top = `${item.y}px`;
           el.style.width = `${item.width}px`;
@@ -257,7 +297,7 @@
                   <option value="Szkic" ${item.tag === 'Szkic' ? 'selected' : ''}>Szkic</option>
                   <option value="Inne" ${item.tag === 'Inne' ? 'selected' : ''}>Inne</option>
                 </select>
-                <button onclick="deleteItem('${item.id}')" class="text-red-800 hover:text-red-950 p-1">
+                <button onclick="event.stopPropagation(); deleteItem('${item.id}')" class="text-red-800 hover:text-red-950 p-1">
                   <i data-lucide="trash" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
@@ -304,19 +344,23 @@
     }
 
     function makeDraggable(el, item) {
-      let isDragging = false;
+      let isDraggingThisItem = false;
       let startX, startY;
 
-      const startAction = (clientX, clientY) => {
-        isDragging = true;
+      const startAction = (clientX, clientY, e) => {
+        // Jeśli jest aktywny tryb przesuwania tablicy (Rączka), ignoruj przesuwanie pojedynczego obiektu
+        if (state.tool === 'pan') return;
+
+        isDraggingThisItem = true;
         state.selectedItemId = item.id;
         startX = clientX - item.x * state.zoom;
         startY = clientY - item.y * state.zoom;
         renderBoardElements();
+        if (e) e.stopPropagation();
       };
 
       const moveAction = (clientX, clientY) => {
-        if (!isDragging) return;
+        if (!isDraggingThisItem || state.tool === 'pan') return;
         item.x = (clientX - startX) / state.zoom;
         item.y = (clientY - startY) / state.zoom;
         el.style.left = `${item.x}px`;
@@ -324,23 +368,21 @@
       };
 
       const endAction = () => {
-        if (isDragging) {
-          isDragging = false;
+        if (isDraggingThisItem) {
+          isDraggingThisItem = false;
           saveToLocalStorage();
         }
       };
 
       el.addEventListener('mousedown', (e) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
-        startAction(e.clientX, e.clientY);
-        e.stopPropagation();
+        startAction(e.clientX, e.clientY, e);
       });
 
       el.addEventListener('touchstart', (e) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
         const touch = e.touches[0];
-        startAction(touch.clientX, touch.clientY);
-        e.stopPropagation();
+        startAction(touch.clientX, touch.clientY, e);
       }, { passive: true });
 
       window.addEventListener('mousemove', (e) => moveAction(e.clientX, e.clientY));
@@ -389,7 +431,7 @@
         }
       });
 
-      const startPanAction = (clientX, clientY) => {
+      const startBoardAction = (clientX, clientY) => {
         if (state.tool === 'draw') {
           state.isDrawing = true;
           const rect = boardContainer.getBoundingClientRect();
@@ -404,13 +446,12 @@
           return;
         }
 
+        // Przesuwanie tablicy (zarówno w trybie 'pan', jak i przy kliknięciu w tło w trybie 'select')
         state.isPanning = true;
         state.startPan = { x: clientX - state.pan.x, y: clientY - state.pan.y };
-        state.selectedItemId = null;
-        renderBoardElements();
       };
 
-      const movePanAction = (clientX, clientY) => {
+      const moveBoardAction = (clientX, clientY) => {
         if (state.isPanning) {
           state.pan.x = clientX - state.startPan.x;
           state.pan.y = clientY - state.startPan.y;
@@ -425,7 +466,7 @@
         }
       };
 
-      const endPanAction = () => {
+      const endBoardAction = () => {
         if (state.isPanning) state.isPanning = false;
         if (state.isDrawing) {
           state.isDrawing = false;
@@ -435,23 +476,33 @@
       };
 
       boardContainer.addEventListener('mousedown', (e) => {
+        // Kliknięcie w puste tło odznacza wybrane obiekty
         if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
-          startPanAction(e.clientX, e.clientY);
+          state.selectedItemId = null;
+          renderBoardElements();
+          startBoardAction(e.clientX, e.clientY);
+        } else if (state.tool === 'pan') {
+          startBoardAction(e.clientX, e.clientY);
         }
       });
+
       boardContainer.addEventListener('touchstart', (e) => {
         if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
-          if (e.touches.length > 0) startPanAction(e.touches[0].clientX, e.touches[0].clientY);
+          state.selectedItemId = null;
+          renderBoardElements();
+          if (e.touches.length > 0) startBoardAction(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (state.tool === 'pan') {
+          if (e.touches.length > 0) startBoardAction(e.touches[0].clientX, e.touches[0].clientY);
         }
       }, { passive: true });
 
-      window.addEventListener('mousemove', (e) => movePanAction(e.clientX, e.clientY));
+      window.addEventListener('mousemove', (e) => moveBoardAction(e.clientX, e.clientY));
       window.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 0) movePanAction(e.touches[0].clientX, e.touches[0].clientY);
+        if (e.touches.length > 0) moveBoardAction(e.touches[0].clientX, e.touches[0].clientY);
       }, { passive: true });
 
-      window.addEventListener('mouseup', endPanAction);
-      window.addEventListener('touchend', endPanAction);
+      window.addEventListener('mouseup', endBoardAction);
+      window.addEventListener('touchend', endBoardAction);
 
       boardContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -476,35 +527,27 @@
         render();
       });
 
-      document.getElementById('toolSelect').addEventListener('click', () => {
-        state.tool = 'select';
-        document.getElementById('toolSelect').className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
-        document.getElementById('toolDraw').className = "p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300";
-        document.getElementById('brushOptions').classList.add('hidden');
-      });
-
-      document.getElementById('toolDraw').addEventListener('click', () => {
-        state.tool = 'draw';
-        document.getElementById('toolDraw').className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
-        document.getElementById('toolSelect').className = "p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300";
-        document.getElementById('brushOptions').classList.remove('hidden');
-        document.getElementById('brushOptions').classList.add('flex');
-      });
+      // Narzędzia w Toolbarze
+      document.getElementById('toolSelect').addEventListener('click', () => setTool('select'));
+      document.getElementById('toolPan').addEventListener('click', () => setTool('pan'));
+      document.getElementById('toolDraw').addEventListener('click', () => setTool('draw'));
 
       document.getElementById('addStickyBtn').addEventListener('click', () => {
         const colors = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa'];
         const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        const newId = Date.now().toString();
         state.items.push({
-          id: Date.now().toString(),
+          id: newId,
           type: 'note',
-          x: -state.pan.x + 50 + Math.random() * 30,
-          y: -state.pan.y + 50 + Math.random() * 30,
+          x: -state.pan.x + 60 + Math.random() * 40,
+          y: -state.pan.y + 60 + Math.random() * 40,
           width: 200,
           title: 'Notatka',
           content: '',
           tag: 'Moodboard',
           color: randomColor
         });
+        state.selectedItemId = newId;
         saveToLocalStorage();
         renderBoardElements();
       });
@@ -514,16 +557,18 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (event) => {
+          const newId = Date.now().toString();
           state.items.push({
-            id: Date.now().toString(),
+            id: newId,
             type: 'image',
-            x: -state.pan.x + 50,
-            y: -state.pan.y + 50,
+            x: -state.pan.x + 60 + Math.random() * 30,
+            y: -state.pan.y + 60 + Math.random() * 30,
             width: 240,
             title: file.name.split('.')[0],
             content: event.target.result,
             tag: 'Refka'
           });
+          state.selectedItemId = newId;
           saveToLocalStorage();
           renderBoardElements();
         };
@@ -537,16 +582,18 @@
             const file = item.getAsFile();
             const reader = new FileReader();
             reader.onload = (event) => {
+              const newId = Date.now().toString();
               state.items.push({
-                id: Date.now().toString(),
+                id: newId,
                 type: 'image',
-                x: -state.pan.x + 50,
-                y: -state.pan.y + 50,
+                x: -state.pan.x + 60 + Math.random() * 30,
+                y: -state.pan.y + 60 + Math.random() * 30,
                 width: 240,
                 title: 'Wklejony obraz',
                 content: event.target.result,
                 tag: 'Refka'
               });
+              state.selectedItemId = newId;
               saveToLocalStorage();
               renderBoardElements();
             };
@@ -562,6 +609,7 @@
         if (confirm('Czy na pewno chcesz wyczyścić tablicę?')) {
           state.items = [];
           state.drawPaths = [];
+          state.selectedItemId = null;
           saveToLocalStorage();
           redrawCanvas();
           renderBoardElements();
@@ -620,6 +668,7 @@
 
     window.deleteItem = function(id) {
       state.items = state.items.filter(item => item.id !== id);
+      if (state.selectedItemId === id) state.selectedItemId = null;
       saveToLocalStorage();
       renderBoardElements();
     };
@@ -648,4 +697,5 @@
   </script>
 </body>
 </html>
+
 
