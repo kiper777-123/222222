@@ -1,1 +1,660 @@
 
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Graphic Canvas - Wizualny Notatnik</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      user-select: none;
+      overflow: hidden;
+    }
+    .grid-bg {
+      background-size: 30px 30px;
+      background-image: 
+        radial-gradient(circle, rgba(156, 163, 175, 0.3) 1px, transparent 1px);
+    }
+    .dark .grid-bg {
+      background-image: 
+        radial-gradient(circle, rgba(75, 85, 99, 0.4) 1px, transparent 1px);
+    }
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+    }
+    .dark .glass-panel {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+    }
+    canvas {
+      touch-action: none;
+    }
+    .note-card {
+      transition: box-shadow 0.2s ease, transform 0.1s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 h-screen w-screen flex flex-col font-sans transition-colors duration-200">
+
+  <!-- Pasek górny (Header) -->
+  <header class="glass-panel border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between z-20 shadow-sm">
+    <div class="flex items-center space-x-3">
+      <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-md">
+        <i data-lucide="layout"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg leading-tight">Graphic Notebook</h1>
+        <p class="text-xs text-gray-500 dark:text-gray-400">Wizualny notatnik & Moodboard</p>
+      </div>
+    </div>
+
+    <!-- Wyszukiwanie i Filtry -->
+    <div class="flex items-center space-x-2 flex-1 max-w-md mx-4">
+      <div class="relative w-full">
+        <i data-lucide="search" class="absolute left-3 top-2.5 text-gray-400 w-4 h-4"></i>
+        <input type="text" id="searchInput" placeholder="Szukaj notatek i tagów..." class="w-full pl-9 pr-4 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <select id="tagFilter" class="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="ALL">Wszystkie tagi</option>
+        <option value="Moodboard">Moodboard</option>
+        <option value="Refka">Refka</option>
+        <option value="Szkic">Szkic</option>
+        <option value="Inne">Inne</option>
+      </select>
+    </div>
+
+    <!-- Przełącznik widoku & Akcje -->
+    <div class="flex items-center space-x-2">
+      <div class="bg-gray-200 dark:bg-gray-800 p-1 rounded-lg flex space-x-1">
+        <button id="viewBoardBtn" class="px-3 py-1 text-xs font-medium rounded-md bg-white dark:bg-gray-700 shadow-sm flex items-center space-x-1">
+          <i data-lucide="move" class="w-3.5 h-3.5"></i>
+          <span>Tablica</span>
+        </button>
+        <button id="viewGridBtn" class="px-3 py-1 text-xs font-medium rounded-md text-gray-600 dark:text-gray-400 hover:text-gray-900 flex items-center space-x-1">
+          <i data-lucide="grid" class="w-3.5 h-3.5"></i>
+          <span>Siatka</span>
+        </button>
+      </div>
+
+      <div class="h-5 w-px bg-gray-300 dark:bg-gray-700 mx-1"></div>
+
+      <button id="exportPngBtn" title="Eksportuj jako PNG" class="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300">
+        <i data-lucide="download" class="w-5 h-5"></i>
+      </button>
+      <button id="exportJsonBtn" title="Zapisz projekt (JSON)" class="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300">
+        <i data-lucide="file-json" class="w-5 h-5"></i>
+      </button>
+      <label title="Wczytaj projekt (JSON)" class="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300 cursor-pointer">
+        <i data-lucide="upload" class="w-5 h-5"></i>
+        <input type="file" id="importJsonInput" accept=".json" class="hidden">
+      </label>
+
+      <button id="toggleThemeBtn" class="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg text-gray-600 dark:text-gray-300">
+        <i data-lucide="moon" class="w-5 h-5 dark:hidden"></i>
+        <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Glowny kontener -->
+  <div class="flex-1 relative overflow-hidden flex">
+    
+    <!-- Pływający Toolbar (Canvas) -->
+    <div id="boardToolbar" class="absolute top-4 left-1/2 -translate-x-1/2 z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-2xl p-1.5 shadow-xl flex items-center space-x-1">
+      <button id="toolSelect" title="Przesuwanie / Wybór" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
+        <i data-lucide="mouse-pointer" class="w-5 h-5"></i>
+      </button>
+      <button id="toolDraw" title="Pędzel / Rysowanie" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
+        <i data-lucide="pencil" class="w-5 h-5"></i>
+      </button>
+      
+      <!-- Opcje Pędzla -->
+      <div id="brushOptions" class="hidden flex items-center space-x-2 px-2 border-l border-gray-300 dark:border-gray-700">
+        <input type="color" id="brushColor" value="#4f46e5" class="w-6 h-6 rounded cursor-pointer border-0 bg-transparent">
+        <input type="range" id="brushSize" min="2" max="30" value="4" class="w-20">
+      </div>
+
+      <div class="h-5 w-px bg-gray-300 dark:border-gray-700"></div>
+
+      <!-- Dodawanie obiektów -->
+      <label title="Dodaj Obraz z Dysku" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-700 dark:text-gray-300 cursor-pointer">
+        <i data-lucide="image" class="w-5 h-5"></i>
+        <input type="file" id="imageLoader" accept="image/*" class="hidden">
+      </label>
+      <button id="addStickyBtn" title="Dodaj Karteczkę" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-gray-700 dark:text-gray-300">
+        <i data-lucide="sticky-note" class="w-5 h-5"></i>
+      </button>
+      <button id="clearBoardBtn" title="Wyczyść Tablicę" class="p-2 hover:bg-red-100 text-red-600 rounded-xl">
+        <i data-lucide="trash-2" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Sterowanie Przybliżeniem (Zoom Control) -->
+    <div id="zoomControls" class="absolute bottom-4 right-4 z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-xl p-1 flex items-center space-x-1 shadow-lg">
+      <button id="zoomOut" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><i data-lucide="minus" class="w-4 h-4"></i></button>
+      <span id="zoomVal" class="text-xs font-semibold px-2 w-12 text-center">100%</span>
+      <button id="zoomIn" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><i data-lucide="plus" class="w-4 h-4"></i></button>
+      <button id="zoomReset" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-xs font-semibold">Reset</button>
+    </div>
+
+    <!-- WIDOK 1: Nieskończona Tablica (Canvas Board) -->
+    <div id="boardContainer" class="w-full h-full relative overflow-hidden grid-bg cursor-grab active:cursor-grabbing">
+      <canvas id="paintCanvas" class="absolute top-0 left-0 pointer-events-none z-0"></canvas>
+      <div id="elementsLayer" class="absolute top-0 left-0 w-full h-full z-1"></div>
+    </div>
+
+    <!-- WIDOK 2: Grid / Lista (Masonry Layout) -->
+    <div id="gridContainer" class="hidden w-full h-full overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900">
+      <div id="gridItems" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+    </div>
+
+  </div>
+
+  <script>
+    // --- STAN APLIKACJI ---
+    const state = {
+      view: 'board', // 'board' lub 'grid'
+      tool: 'select', // 'select' lub 'draw'
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+      isPanning: false,
+      startPan: { x: 0, y: 0 },
+      items: [], // obiekty: { id, type: 'image'|'note', x, y, width, height, content, tag, title, color }
+      selectedItemId: null,
+      isDrawing: false,
+      drawPaths: [],
+      currentPath: null
+    };
+
+    // DOM Elements
+    const boardContainer = document.getElementById('boardContainer');
+    const elementsLayer = document.getElementById('elementsLayer');
+    const paintCanvas = document.getElementById('paintCanvas');
+    const ctx = paintCanvas.getContext('2d');
+    const gridContainer = document.getElementById('gridContainer');
+    const gridItems = document.getElementById('gridItems');
+
+    // --- INICJALIZACJA ---
+    function init() {
+      lucide.createIcons();
+      resizeCanvas();
+      loadFromLocalStorage();
+      setupEventListeners();
+      render();
+    }
+
+    function resizeCanvas() {
+      paintCanvas.width = boardContainer.clientWidth;
+      paintCanvas.height = boardContainer.clientHeight;
+      redrawCanvas();
+    }
+
+    // --- RENDERING & RYSOWANIE ---
+    function render() {
+      if (state.view === 'board') {
+        boardContainer.classList.remove('hidden');
+        gridContainer.classList.add('hidden');
+        document.getElementById('boardToolbar').classList.remove('hidden');
+        document.getElementById('zoomControls').classList.remove('hidden');
+        renderBoardElements();
+      } else {
+        boardContainer.classList.add('hidden');
+        gridContainer.classList.remove('hidden');
+        document.getElementById('boardToolbar').classList.add('hidden');
+        document.getElementById('zoomControls').classList.add('hidden');
+        renderGridView();
+      }
+    }
+
+    function renderBoardElements() {
+      elementsLayer.innerHTML = '';
+      elementsLayer.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+
+      const searchKeyword = document.getElementById('searchInput').value.toLowerCase();
+      const selectedTag = document.getElementById('tagFilter').value;
+
+      state.items.forEach(item => {
+        // Filtrowanie
+        const matchesSearch = (item.title || '').toLowerCase().includes(searchKeyword) || (item.content || '').toLowerCase().includes(searchKeyword);
+        const matchesTag = selectedTag === 'ALL' || item.tag === selectedTag;
+
+        if (!matchesSearch || !matchesTag) return;
+
+        const el = document.createElement('div');
+        el.className = `absolute note-card group rounded-xl shadow-md border border-gray-200/80 dark:border-gray-700/80 bg-white dark:bg-gray-800 overflow-hidden cursor-move ${state.selectedItemId === item.id ? 'ring-2 ring-indigo-500 shadow-xl' : ''}`;
+        el.style.left = `${item.x}px`;
+        el.style.top = `${item.y}px`;
+        el.style.width = `${item.width}px`;
+
+        if (item.type === 'image') {
+          el.innerHTML = `
+            <div class="relative">
+              <img src="${item.content}" class="w-full h-auto object-cover max-h-[400px] pointer-events-none" />
+              <div class="p-3 bg-white/95 dark:bg-gray-800/95">
+                <input type="text" value="${item.title || ''}" placeholder="Tytuł / Opis..." class="w-full font-semibold text-sm bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none mb-1 text-gray-800 dark:text-gray-100" data-id="${item.id}" data-field="title">
+                <div class="flex items-center justify-between mt-2">
+                  <select data-id="${item.id}" data-field="tag" class="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded border-none outline-none">
+                    <option value="Moodboard" ${item.tag === 'Moodboard' ? 'selected' : ''}>Moodboard</option>
+                    <option value="Refka" ${item.tag === 'Refka' ? 'selected' : ''}>Refka</option>
+                    <option value="Szkic" ${item.tag === 'Szkic' ? 'selected' : ''}>Szkic</option>
+                    <option value="Inne" ${item.tag === 'Inne' ? 'selected' : ''}>Inne</option>
+                  </select>
+                  <button onclick="deleteItem('${item.id}')" class="text-red-500 hover:text-red-700 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <i data-lucide="trash" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        } else if (item.type === 'note') {
+          el.style.backgroundColor = item.color || '#fef08a';
+          el.className += ' text-gray-900';
+          el.innerHTML = `
+            <div class="p-4 flex flex-col h-full min-h-[150px]">
+              <input type="text" value="${item.title || ''}" placeholder="Tytuł notatki..." class="font-bold text-sm bg-transparent border-b border-black/10 focus:outline-none mb-2 placeholder-gray-700" data-id="${item.id}" data-field="title">
+              <textarea placeholder="Wpisz treść..." class="w-full flex-1 bg-transparent border-none focus:outline-none text-xs resize-none placeholder-gray-600" data-id="${item.id}" data-field="content">${item.content || ''}</textarea>
+              <div class="flex items-center justify-between mt-2 pt-2 border-t border-black/10">
+                <select data-id="${item.id}" data-field="tag" class="text-xs bg-black/10 px-2 py-0.5 rounded border-none outline-none">
+                  <option value="Moodboard" ${item.tag === 'Moodboard' ? 'selected' : ''}>Moodboard</option>
+                  <option value="Refka" ${item.tag === 'Refka' ? 'selected' : ''}>Refka</option>
+                  <option value="Szkic" ${item.tag === 'Szkic' ? 'selected' : ''}>Szkic</option>
+                  <option value="Inne" ${item.tag === 'Inne' ? 'selected' : ''}>Inne</option>
+                </select>
+                <button onclick="deleteItem('${item.id}')" class="text-red-700 hover:text-red-900 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <i data-lucide="trash" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        makeDraggable(el, item);
+        elementsLayer.appendChild(el);
+      });
+      lucide.createIcons();
+    }
+
+    function renderGridView() {
+      gridItems.innerHTML = '';
+      const searchKeyword = document.getElementById('searchInput').value.toLowerCase();
+      const selectedTag = document.getElementById('tagFilter').value;
+
+      state.items.forEach(item => {
+        const matchesSearch = (item.title || '').toLowerCase().includes(searchKeyword) || (item.content || '').toLowerCase().includes(searchKeyword);
+        const matchesTag = selectedTag === 'ALL' || item.tag === selectedTag;
+
+        if (!matchesSearch || !matchesTag) return;
+
+        const card = document.createElement('div');
+        card.className = "bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col";
+        
+        if (item.type === 'image') {
+          card.innerHTML = `
+            <img src="${item.content}" class="w-full h-48 object-cover" />
+            <div class="p-4 flex-1 flex flex-col justify-between">
+              <div>
+                <span class="inline-block px-2 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300 rounded mb-2">${item.tag || 'Brak'}</span>
+                <h3 class="font-bold text-sm text-gray-900 dark:text-gray-100">${item.title || 'Bez tytułu'}</h3>
+              </div>
+            </div>
+          `;
+        } else {
+          card.style.backgroundColor = item.color || '#fef08a';
+          card.innerHTML = `
+            <div class="p-4 flex-1 flex flex-col justify-between text-gray-900">
+              <div>
+                <span class="inline-block px-2 py-0.5 text-xs font-semibold bg-black/10 rounded mb-2">${item.tag || 'Brak'}</span>
+                <h3 class="font-bold text-sm mb-1">${item.title || 'Bez tytułu'}</h3>
+                <p class="text-xs whitespace-pre-wrap">${item.content || ''}</p>
+              </div>
+            </div>
+          `;
+        }
+        gridItems.appendChild(card);
+      });
+    }
+
+    // --- INTERAKCJE I DRAG & DROP ---
+    function makeDraggable(el, item) {
+      let isDragging = false;
+      let startX, startY;
+
+      el.addEventListener('mousedown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.closest('button')) return;
+        isDragging = true;
+        state.selectedItemId = item.id;
+        startX = e.clientX - item.x * state.zoom;
+        startY = e.clientY - item.y * state.zoom;
+        renderBoardElements();
+        e.stopPropagation();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        item.x = (e.clientX - startX) / state.zoom;
+        item.y = (e.clientY - startY) / state.zoom;
+        el.style.left = `${item.x}px`;
+        el.style.top = `${item.y}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          saveToLocalStorage();
+        }
+      });
+    }
+
+    // --- CANVAS DRAWING (Rysowanie) ---
+    function redrawCanvas() {
+      ctx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+      ctx.save();
+      ctx.translate(state.pan.x, state.pan.y);
+      ctx.scale(state.zoom, state.zoom);
+
+      state.drawPaths.forEach(path => {
+        if (path.points.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = path.color;
+        ctx.lineWidth = path.size;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(path.points[0].x, path.points[0].y);
+        for (let i = 1; i < path.points.length; i++) {
+          ctx.lineTo(path.points[i].x, path.points[i].y);
+        }
+        ctx.stroke();
+      });
+
+      ctx.restore();
+    }
+
+    // --- OBSŁUGA ZDARZEŃ ---
+    function setupEventListeners() {
+      window.addEventListener('resize', resizeCanvas);
+
+      // Zmiany w polach edycyjnych notatek
+      elementsLayer.addEventListener('input', (e) => {
+        const id = e.target.dataset.id;
+        const field = e.target.dataset.field;
+        if (!id || !field) return;
+
+        const item = state.items.find(i => i.id === id);
+        if (item) {
+          item[field] = e.target.value;
+          saveToLocalStorage();
+        }
+      });
+
+      // Pan & Zoom dla tablicy
+      boardContainer.addEventListener('mousedown', (e) => {
+        if (state.tool === 'draw') {
+          state.isDrawing = true;
+          const rect = boardContainer.getBoundingClientRect();
+          const x = (e.clientX - rect.left - state.pan.x) / state.zoom;
+          const y = (e.clientY - rect.top - state.pan.y) / state.zoom;
+          state.currentPath = {
+            color: document.getElementById('brushColor').value,
+            size: document.getElementById('brushSize').value,
+            points: [{ x, y }]
+          };
+          state.drawPaths.push(state.currentPath);
+          return;
+        }
+
+        if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
+          state.isPanning = true;
+          state.startPan = { x: e.clientX - state.pan.x, y: e.clientY - state.pan.y };
+          state.selectedItemId = null;
+          renderBoardElements();
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (state.isPanning) {
+          state.pan.x = e.clientX - state.startPan.x;
+          state.pan.y = e.clientY - state.startPan.y;
+          elementsLayer.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+          redrawCanvas();
+        } else if (state.isDrawing && state.currentPath) {
+          const rect = boardContainer.getBoundingClientRect();
+          const x = (e.clientX - rect.left - state.pan.x) / state.zoom;
+          const y = (e.clientY - rect.top - state.pan.y) / state.zoom;
+          state.currentPath.points.push({ x, y });
+          redrawCanvas();
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (state.isPanning) state.isPanning = false;
+        if (state.isDrawing) {
+          state.isDrawing = false;
+          state.currentPath = null;
+          saveToLocalStorage();
+        }
+      });
+
+      boardContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+        const newZoom = Math.min(Math.max(0.2, state.zoom * zoomFactor), 3);
+        
+        state.zoom = newZoom;
+        document.getElementById('zoomVal').innerText = `${Math.round(state.zoom * 100)}%`;
+        renderBoardElements();
+        redrawCanvas();
+      });
+
+      // Przełączniki widoku
+      document.getElementById('viewBoardBtn').addEventListener('click', () => {
+        state.view = 'board';
+        document.getElementById('viewBoardBtn').className = "px-3 py-1 text-xs font-medium rounded-md bg-white dark:bg-gray-700 shadow-sm flex items-center space-x-1";
+        document.getElementById('viewGridBtn').className = "px-3 py-1 text-xs font-medium rounded-md text-gray-600 dark:text-gray-400 hover:text-gray-900 flex items-center space-x-1";
+        render();
+      });
+
+      document.getElementById('viewGridBtn').addEventListener('click', () => {
+        state.view = 'grid';
+        document.getElementById('viewGridBtn').className = "px-3 py-1 text-xs font-medium rounded-md bg-white dark:bg-gray-700 shadow-sm flex items-center space-x-1";
+        document.getElementById('viewBoardBtn').className = "px-3 py-1 text-xs font-medium rounded-md text-gray-600 dark:text-gray-400 hover:text-gray-900 flex items-center space-x-1";
+        render();
+      });
+
+      // Narzędzia Toolbar
+      document.getElementById('toolSelect').addEventListener('click', () => {
+        state.tool = 'select';
+        document.getElementById('toolSelect').className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
+        document.getElementById('toolDraw').className = "p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300";
+        document.getElementById('brushOptions').classList.add('hidden');
+      });
+
+      document.getElementById('toolDraw').addEventListener('click', () => {
+        state.tool = 'draw';
+        document.getElementById('toolDraw').className = "p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400";
+        document.getElementById('toolSelect').className = "p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300";
+        document.getElementById('brushOptions').classList.remove('hidden');
+      });
+
+      // Dodawanie Sticky Note
+      document.getElementById('addStickyBtn').addEventListener('click', () => {
+        const colors = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fbcfe8', '#fed7aa'];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        const newItem = {
+          id: Date.now().toString(),
+          type: 'note',
+          x: -state.pan.x + 100 + Math.random() * 50,
+          y: -state.pan.y + 100 + Math.random() * 50,
+          width: 220,
+          title: 'Notatka',
+          content: '',
+          tag: 'Moodboard',
+          color: randomColor
+        };
+        state.items.push(newItem);
+        saveToLocalStorage();
+        renderBoardElements();
+      });
+
+      // Wczytywanie obrazu
+      document.getElementById('imageLoader').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const newItem = {
+            id: Date.now().toString(),
+            type: 'image',
+            x: -state.pan.x + 150,
+            y: -state.pan.y + 150,
+            width: 280,
+            title: file.name.split('.')[0],
+            content: event.target.result,
+            tag: 'Refka'
+          };
+          state.items.push(newItem);
+          saveToLocalStorage();
+          renderBoardElements();
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // Drag & Drop z pulpitu oraz wklejanie (Ctrl+V)
+      window.addEventListener('paste', (e) => {
+        const items = e.clipboardData.items;
+        for (let item of items) {
+          if (item.type.indexOf('image') !== -1) {
+            const file = item.getAsFile();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              state.items.push({
+                id: Date.now().toString(),
+                type: 'image',
+                x: -state.pan.x + 200,
+                y: -state.pan.y + 200,
+                width: 300,
+                title: 'Wklejony obraz',
+                content: event.target.result,
+                tag: 'Refka'
+              });
+              saveToLocalStorage();
+              renderBoardElements();
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      });
+
+      // Filtry i Wyszukiwarka
+      document.getElementById('searchInput').addEventListener('input', render);
+      document.getElementById('tagFilter').addEventListener('change', render);
+
+      // Czyszczenie
+      document.getElementById('clearBoardBtn').addEventListener('click', () => {
+        if (confirm('Czy na pewno chcesz wyczyścić całą tablicę?')) {
+          state.items = [];
+          state.drawPaths = [];
+          saveToLocalStorage();
+          redrawCanvas();
+          renderBoardElements();
+        }
+      });
+
+      // Zoom Controls
+      document.getElementById('zoomIn').addEventListener('click', () => {
+        state.zoom = Math.min(3, state.zoom + 0.1);
+        document.getElementById('zoomVal').innerText = `${Math.round(state.zoom * 100)}%`;
+        renderBoardElements();
+        redrawCanvas();
+      });
+      document.getElementById('zoomOut').addEventListener('click', () => {
+        state.zoom = Math.max(0.2, state.zoom - 0.1);
+        document.getElementById('zoomVal').innerText = `${Math.round(state.zoom * 100)}%`;
+        renderBoardElements();
+        redrawCanvas();
+      });
+      document.getElementById('zoomReset').addEventListener('click', () => {
+        state.zoom = 1;
+        state.pan = { x: 0, y: 0 };
+        document.getElementById('zoomVal').innerText = `100%`;
+        renderBoardElements();
+        redrawCanvas();
+      });
+
+      // Ciemny motyw
+      document.getElementById('toggleThemeBtn').addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+      });
+
+      // Eksport JSON
+      document.getElementById('exportJsonBtn').addEventListener('click', () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+          items: state.items,
+          drawPaths: state.drawPaths
+        }));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `graphic-notebook-${Date.now()}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+      });
+
+      // Import JSON
+      document.getElementById('importJsonInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = JSON.parse(event.target.result);
+            state.items = data.items || [];
+            state.drawPaths = data.drawPaths || [];
+            saveToLocalStorage();
+            redrawCanvas();
+            renderBoardElements();
+          } catch (err) {
+            alert('Błąd wczytywania pliku JSON.');
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    // Usuwanie obiektu
+    window.deleteItem = function(id) {
+      state.items = state.items.filter(item => item.id !== id);
+      saveToLocalStorage();
+      renderBoardElements();
+    };
+
+    // --- LOCAL STORAGE ---
+    function saveToLocalStorage() {
+      localStorage.setItem('graphic_notebook_data', JSON.stringify({
+        items: state.items,
+        drawPaths: state.drawPaths
+      }));
+    }
+
+    function loadFromLocalStorage() {
+      const saved = localStorage.getItem('graphic_notebook_data');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          state.items = parsed.items || [];
+          state.drawPaths = parsed.drawPaths || [];
+        } catch (e) {
+          console.error("Błąd podczas odczytu z localStorage", e);
+        }
+      }
+    }
+
+    // Uruchomienie aplikacji
+    init();
+  </script>
+</body>
+</html>
