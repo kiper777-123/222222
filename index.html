@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -13,7 +12,6 @@
     body {
       user-select: none;
       overflow: hidden;
-      /* Zapobiega przypadkowemu ściąganiu strony na dół / odświeżaniu gestem na mobile */
       overscroll-behavior: none;
     }
     .grid-bg {
@@ -39,7 +37,6 @@
     .note-card {
       transition: box-shadow 0.2s ease;
     }
-    /* Ukrywanie paska przewijania na toolbarze mobilnym */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -62,11 +59,11 @@
       </div>
     </div>
 
-    <!-- Wyszukiwanie i Filtry (ukryte na bardzo małych lub zredukowane) -->
+    <!-- Wyszukiwanie i Filtry -->
     <div class="flex items-center space-x-2 flex-1 max-w-xs sm:max-w-md mx-1">
       <div class="relative w-full">
         <i data-lucide="search" class="absolute left-2.5 top-2 text-gray-400 w-3.5 h-3.5"></i>
-        <input type="text" id="searchInput" placeholder="Szukaj..." class="w-full pl-8 pr-3 py-1 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <input type="text" id="searchInput" placeholder="Szukaj notatek..." class="w-full pl-8 pr-3 py-1 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
       </div>
       <select id="tagFilter" class="bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-xs px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 hidden sm:block">
         <option value="ALL">Wszystkie</option>
@@ -111,7 +108,7 @@
   <!-- Główny kontener -->
   <div class="flex-1 relative overflow-hidden flex">
     
-    <!-- Pływający Toolbar (Przesunięty na dół na telefonach, wyśrodkowany z opcją przewijania) -->
+    <!-- Pływający Toolbar -->
     <div id="boardToolbar" class="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[95vw] overflow-x-auto no-scrollbar z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-2xl p-1.5 shadow-2xl flex items-center space-x-1 whitespace-nowrap">
       <button id="toolSelect" title="Przesuwanie / Wybór" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
         <i data-lucide="mouse-pointer" class="w-5 h-5"></i>
@@ -141,7 +138,7 @@
       </button>
     </div>
 
-    <!-- Sterowanie Przybliżeniem (Zoom Control) -->
+    <!-- Sterowanie Przybliżeniem -->
     <div id="zoomControls" class="absolute top-4 right-4 z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-xl p-1 flex items-center space-x-1 shadow-lg">
       <button id="zoomOut" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
       <span id="zoomVal" class="text-xs font-semibold px-1 w-10 text-center">100%</span>
@@ -154,7 +151,7 @@
       <div id="elementsLayer" class="absolute top-0 left-0 w-full h-full z-1"></div>
     </div>
 
-    <!-- WIDOK 2: Grid / Lista (Masonry Layout) -->
+    <!-- WIDOK 2: Grid / Lista -->
     <div id="gridContainer" class="hidden w-full h-full overflow-y-auto p-4 sm:p-6 bg-gray-50 dark:bg-gray-900 pb-24">
       <div id="gridItems" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
     </div>
@@ -227,32 +224,26 @@
         if (!matchesSearch || !matchesTag) return;
 
         const el = document.createElement('div');
-        el.className = `absolute note-card group rounded-xl shadow-md border border-gray-200/80 dark:border-gray-700/80 bg-white dark:bg-gray-800 overflow-hidden cursor-move ${state.selectedItemId === item.id ? 'ring-2 ring-indigo-500 shadow-xl' : ''}`;
-        el.style.left = `${item.x}px`;
-        el.style.top = `${item.y}px`;
-        el.style.width = `${item.width}px`;
-
+        
         if (item.type === 'image') {
+          // Samo zdjęcie - bez paneli tekstowych na dole
+          el.className = `absolute note-card group rounded-xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 overflow-hidden cursor-move ${state.selectedItemId === item.id ? 'ring-2 ring-indigo-500 shadow-2xl' : ''}`;
+          el.style.left = `${item.x}px`;
+          el.style.top = `${item.y}px`;
+          el.style.width = `${item.width}px`;
           el.innerHTML = `
-            <div class="relative">
-              <img src="${item.content}" class="w-full h-auto object-cover max-h-[300px] pointer-events-none" />
-              <div class="p-2.5 bg-white/95 dark:bg-gray-800/95">
-                <input type="text" value="${item.title || ''}" placeholder="Tytuł..." class="w-full font-semibold text-xs bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none mb-1 text-gray-800 dark:text-gray-100" data-id="${item.id}" data-field="title">
-                <div class="flex items-center justify-between mt-1">
-                  <select data-id="${item.id}" data-field="tag" class="text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded border-none outline-none">
-                    <option value="Moodboard" ${item.tag === 'Moodboard' ? 'selected' : ''}>Moodboard</option>
-                    <option value="Refka" ${item.tag === 'Refka' ? 'selected' : ''}>Refka</option>
-                    <option value="Szkic" ${item.tag === 'Szkic' ? 'selected' : ''}>Szkic</option>
-                    <option value="Inne" ${item.tag === 'Inne' ? 'selected' : ''}>Inne</option>
-                  </select>
-                  <button onclick="deleteItem('${item.id}')" class="text-red-500 hover:text-red-700 p-1">
-                    <i data-lucide="trash" class="w-3.5 h-3.5"></i>
-                  </button>
-                </div>
-              </div>
+            <div class="relative w-full h-full">
+              <img src="${item.content}" class="w-full h-auto object-cover rounded-xl pointer-events-none block" />
+              <button onclick="deleteItem('${item.id}')" class="absolute top-2 right-2 bg-black/60 hover:bg-red-600 text-white p-1.5 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
             </div>
           `;
         } else if (item.type === 'note') {
+          el.className = `absolute note-card group rounded-xl shadow-md border border-gray-200/80 dark:border-gray-700/80 overflow-hidden cursor-move ${state.selectedItemId === item.id ? 'ring-2 ring-indigo-500 shadow-xl' : ''}`;
+          el.style.left = `${item.x}px`;
+          el.style.top = `${item.y}px`;
+          el.style.width = `${item.width}px`;
           el.style.backgroundColor = item.color || '#fef08a';
           el.className += ' text-gray-900';
           el.innerHTML = `
@@ -296,11 +287,7 @@
         
         if (item.type === 'image') {
           card.innerHTML = `
-            <img src="${item.content}" class="w-full h-40 object-cover" />
-            <div class="p-3">
-              <span class="inline-block px-2 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300 rounded mb-1">${item.tag || 'Brak'}</span>
-              <h3 class="font-bold text-xs text-gray-900 dark:text-gray-100">${item.title || 'Bez tytułu'}</h3>
-            </div>
+            <img src="${item.content}" class="w-full h-48 object-cover" />
           `;
         } else {
           card.style.backgroundColor = item.color || '#fef08a';
@@ -402,7 +389,6 @@
         }
       });
 
-      // Obsługa przesuwania tablicy (Pan) i rysowania myszą/palcem
       const startPanAction = (clientX, clientY) => {
         if (state.tool === 'draw') {
           state.isDrawing = true;
@@ -662,3 +648,4 @@
   </script>
 </body>
 </html>
+
