@@ -111,7 +111,7 @@
     <!-- Pływający Toolbar -->
     <div id="boardToolbar" class="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[95vw] overflow-x-auto no-scrollbar z-10 glass-panel border border-gray-200 dark:border-gray-700 rounded-2xl p-1.5 shadow-2xl flex items-center space-x-1 whitespace-nowrap">
       
-      <button id="toolSelect" title="Zaznacz / Przesuń jeden obiekt" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
+      <button id="toolSelect" title="Zaznacz / Przesuń / Skaluj obiekt dwoma palcami" class="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
         <i data-lucide="mouse-pointer" class="w-5 h-5"></i>
       </button>
       
@@ -178,7 +178,11 @@
       dragOffset: { x: 0, y: 0 },
       isDrawing: false,
       drawPaths: [],
-      currentPath: null
+      currentPath: null,
+      // Stan gestów pinch-to-zoom / pinch-scale
+      initialPinchDist: 0,
+      initialItemWidth: 0,
+      initialBoardZoom: 1
     };
 
     const boardContainer = document.getElementById('boardContainer');
@@ -262,6 +266,7 @@
 
         const isSelected = state.selectedItemId === item.id;
         const el = document.createElement('div');
+        el.setAttribute('data-id', item.id);
         
         if (item.type === 'image') {
           el.className = `absolute note-card rounded-xl shadow-lg border-2 transition-all ${isSelected ? 'border-indigo-500 ring-4 ring-indigo-500/20 shadow-2xl z-20' : 'border-transparent shadow-md z-1'}`;
@@ -339,32 +344,48 @@
       });
     }
 
-    // Podpinanie zdarzeń do pojedynczego elementu (obrazu / karteczki)
+    function getDistance(t1, t2) {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Podpinanie zdarzeń do obrazu / karteczki
     function bindItemEvents(el, item) {
-      const handleStart = (clientX, clientY, e) => {
-        if (state.tool === 'pan') return; // Jeśli aktywna jest RĄCZKA, pozwól zdarzeniu przejść do tła!
+      el.addEventListener('mousedown', (e) => {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
+        if (state.tool === 'pan') return;
 
-        // W trybie ZAZNACZANIA przerywamy propagację, by nie przesuwać tła
         e.stopPropagation();
-
         state.selectedItemId = item.id;
         state.draggingItemId = item.id;
         state.dragOffset = {
-          x: clientX - item.x * state.zoom,
-          y: clientY - item.y * state.zoom
+          x: e.clientX - item.x * state.zoom,
+          y: e.clientY - item.y * state.zoom
         };
         renderBoardElements();
-      };
-
-      el.addEventListener('mousedown', (e) => {
-        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
-        handleStart(e.clientX, e.clientY, e);
       });
 
       el.addEventListener('touchstart', (e) => {
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.closest('button')) return;
-        if (e.touches.length > 0) {
-          handleStart(e.touches[0].clientX, e.touches[0].clientY, e);
+        if (state.tool === 'pan') return;
+
+        e.stopPropagation();
+
+        if (e.touches.length === 1) {
+          state.selectedItemId = item.id;
+          state.draggingItemId = item.id;
+          state.dragOffset = {
+            x: e.touches[0].clientX - item.x * state.zoom,
+            y: e.touches[0].clientY - item.y * state.zoom
+          };
+          renderBoardElements();
+        } else if (e.touches.length === 2 && state.tool === 'select') {
+          // Początek skali obrazka dwoma palcami
+          state.selectedItemId = item.id;
+          state.draggingItemId = null; // wyłącz przesuwanie
+          state.initialPinchDist = getDistance(e.touches[0], e.touches[1]);
+          state.initialItemWidth = item.width;
         }
       }, { passive: false });
     }
@@ -406,8 +427,8 @@
         }
       });
 
-      // Zdarzenia globalne ruchu i klikania
-      const handleGlobalStart = (clientX, clientY) => {
+      // Globalne powiększanie (Zoom) lub Przesuwanie tablicy
+      const handleGlobalStart = (clientX, clientY, e) => {
         if (state.tool === 'draw') {
           state.isDrawing = true;
           const rect = boardContainer.getBoundingClientRect();
@@ -422,20 +443,18 @@
           return;
         }
 
-        // Jeśli kliknięto w puste tło lub aktywna jest rączka -> Przesuwanie tablicy
         state.isPanning = true;
         state.startPan = { x: clientX - state.pan.x, y: clientY - state.pan.y };
       };
 
       const handleGlobalMove = (clientX, clientY) => {
-        // 1. Przesuwanie pojedynczego obiektu (w trybie Select)
+        // Przesuwanie obiektu jednokrotnym dotknięciem
         if (state.draggingItemId && state.tool === 'select') {
           const item = state.items.find(i => i.id === state.draggingItemId);
           if (item) {
             item.x = (clientX - state.dragOffset.x) / state.zoom;
             item.y = (clientY - state.dragOffset.y) / state.zoom;
-            
-            const el = elementsLayer.querySelector(`[data-id="${item.id}"]`) || elementsLayer.children[state.items.indexOf(item)];
+            const el = elementsLayer.querySelector(`[data-id="${item.id}"]`);
             if (el) {
               el.style.left = `${item.x}px`;
               el.style.top = `${item.y}px`;
@@ -444,7 +463,7 @@
           return;
         }
 
-        // 2. Przesuwanie całej tablicy (Rączka lub tło)
+        // Przesuwanie tablicy
         if (state.isPanning) {
           state.pan.x = clientX - state.startPan.x;
           state.pan.y = clientY - state.startPan.y;
@@ -453,7 +472,7 @@
           return;
         }
 
-        // 3. Rysowanie
+        // Rysowanie
         if (state.isDrawing && state.currentPath) {
           const rect = boardContainer.getBoundingClientRect();
           const x = (clientX - rect.left - state.pan.x) / state.zoom;
@@ -476,6 +495,7 @@
           state.currentPath = null;
           saveToLocalStorage();
         }
+        state.initialPinchDist = 0;
       };
 
       boardContainer.addEventListener('mousedown', (e) => {
@@ -483,24 +503,58 @@
           state.selectedItemId = null;
           renderBoardElements();
         }
-        handleGlobalStart(e.clientX, e.clientY);
+        handleGlobalStart(e.clientX, e.clientY, e);
       });
 
+      // GESTY DOTYKOWE (PINCH-TO-ZOOM I PINCH-SCALE)
       boardContainer.addEventListener('touchstart', (e) => {
-        if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
-          state.selectedItemId = null;
-          renderBoardElements();
+        if (e.touches.length === 2) {
+          state.draggingItemId = null;
+          state.isPanning = false;
+          state.initialPinchDist = getDistance(e.touches[0], e.touches[1]);
+          state.initialBoardZoom = state.zoom;
+
+          // Jeśli zaznaczony jest obrazek, zapisujemy też jego początkową szerokość
+          if (state.selectedItemId && state.tool === 'select') {
+            const item = state.items.find(i => i.id === state.selectedItemId);
+            if (item) state.initialItemWidth = item.width;
+          }
+        } else if (e.touches.length === 1) {
+          if (e.target === boardContainer || e.target === paintCanvas || e.target === elementsLayer) {
+            state.selectedItemId = null;
+            renderBoardElements();
+          }
+          handleGlobalStart(e.touches[0].clientX, e.touches[0].clientY, e);
         }
-        if (e.touches.length > 0) {
-          handleGlobalStart(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: false });
+
+      boardContainer.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && state.initialPinchDist > 0) {
+          const currentDist = getDistance(e.touches[0], e.touches[1]);
+          const scale = currentDist / state.initialPinchDist;
+
+          // Skalowanie wskazanego zdjęcia dwoma palcami
+          if (state.selectedItemId && state.tool === 'select') {
+            const item = state.items.find(i => i.id === state.selectedItemId);
+            if (item) {
+              const newWidth = Math.min(Math.max(80, state.initialItemWidth * scale), 1200);
+              item.width = newWidth;
+              const el = elementsLayer.querySelector(`[data-id="${item.id}"]`);
+              if (el) el.style.width = `${newWidth}px`;
+            }
+          } else {
+            // Skalowanie przybliżenia całej tablicy
+            state.zoom = Math.min(Math.max(0.2, state.initialBoardZoom * scale), 3);
+            document.getElementById('zoomVal').innerText = `${Math.round(state.zoom * 100)}%`;
+            renderBoardElements();
+            redrawCanvas();
+          }
+        } else if (e.touches.length === 1) {
+          handleGlobalMove(e.touches[0].clientX, e.touches[0].clientY);
         }
-      }, { passive: true });
+      }, { passive: false });
 
       window.addEventListener('mousemove', (e) => handleGlobalMove(e.clientX, e.clientY));
-      window.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 0) handleGlobalMove(e.touches[0].clientX, e.touches[0].clientY);
-      }, { passive: true });
-
       window.addEventListener('mouseup', handleGlobalEnd);
       window.addEventListener('touchend', handleGlobalEnd);
 
@@ -697,4 +751,5 @@
   </script>
 </body>
 </html>
+
 
